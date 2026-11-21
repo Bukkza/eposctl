@@ -4,7 +4,7 @@ use eframe::egui::{RichText, Ui};
 
 use super::super::App;
 use crate::hotkeys::Action;
-use crate::theme::{self, DANGER};
+use crate::theme;
 use crate::widgets;
 
 impl App {
@@ -52,7 +52,7 @@ impl App {
             self.view.recording = if recording { None } else { Some(a) };
         }
         if !recording && self.hotkeys.as_ref().is_some_and(|h| h.failed(a)) {
-            ui.label(RichText::new(s.hk_in_use).font(theme::font(12.5)).color(DANGER));
+            ui.label(RichText::new(s.hk_in_use).font(theme::font(12.5)).color(theme::colors(ui).danger));
         }
     }
 }

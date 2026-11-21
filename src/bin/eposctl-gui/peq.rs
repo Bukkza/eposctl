@@ -1,14 +1,14 @@
 //! Parametric EQ editor: any number of bands, shown against what the headset's
 //! 9-band EQ makes of them.
 
-use eframe::egui::{self, Align2, Color32, DragValue, Pos2, Rect, Sense, Stroke, Ui, pos2, vec2};
+use eframe::egui::{self, Align2, DragValue, Pos2, Rect, Sense, Stroke, Ui, pos2, vec2};
 
 use eposctl::apo::layout::BANDS;
 use eposctl::eqfile::{CENTRES_HZ, Kind, band_label};
 use eposctl::peq::{Band, Peq, epos_db};
 
 use crate::strings::Strings;
-use crate::theme::{self, ACCENT, DANGER, FAINT, SECONDARY, TEXT};
+use crate::theme::{self, Palette};
 use crate::widgets;
 
 const F_MIN: f32 = 20.0;
@@ -104,9 +104,10 @@ impl Axes {
 pub fn plot(ui: &mut Ui, peq: &mut Peq, fitted: Option<(&[f32; BANDS], f32)>, height: f32) -> Changed {
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::click_and_drag());
     let axes = Axes::new(rect);
+    let colors = theme::colors(ui);
     let painter = ui.painter_at(rect.expand(2.0));
-    draw_grid(&painter, &axes);
-    draw_curves(&painter, &axes, peq, fitted);
+    draw_grid(&painter, colors, &axes);
+    draw_curves(&painter, colors, &axes, peq, fitted);
 
     // Points: drag to move (frequency, gain), scroll to change Q.
     let pointer = resp.interact_pointer_pos().or(resp.hover_pos());
@@ -116,37 +117,49 @@ pub fn plot(ui: &mut Ui, peq: &mut Peq, fitted: Option<(&[f32; BANDS], f32)>, he
         out.merge(scroll_q(ui, &resp, &mut peq.bands[i]));
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
     }
-    draw_points(&painter, &axes, peq, |i| Some(i) == hovered || Some(i) == dragging);
+    draw_points(&painter, colors, &axes, peq, |i| Some(i) == hovered || Some(i) == dragging);
     out
 }
 
 /// Grid: dB lines, and the headset's band centres.
-fn draw_grid(painter: &egui::Painter, axes: &Axes) {
+fn draw_grid(painter: &egui::Painter, colors: &Palette, axes: &Axes) {
     let (plot, font) = (axes.plot, theme::font(11.0));
     for db in [-12.0, -6.0, 0.0, 6.0, 12.0] {
         let y = axes.y_of(db);
-        let c = if db == 0.0 { Color32::from_rgb(0x34, 0x37, 0x40) } else { Color32::from_rgb(0x22, 0x24, 0x2A) };
+        let c = if db == 0.0 { colors.line } else { colors.grid };
         painter.line_segment([pos2(plot.left(), y), pos2(plot.right(), y)], Stroke::new(1.0, c));
-        painter.text(pos2(plot.left() - 8.0, y), Align2::RIGHT_CENTER, format!("{db:+.0}"), font.clone(), FAINT);
+        painter.text(
+            pos2(plot.left() - 8.0, y),
+            Align2::RIGHT_CENTER,
+            format!("{db:+.0}"),
+            font.clone(),
+            colors.subdued,
+        );
     }
-    let column = Stroke::new(1.0, Color32::from_rgb(0x22, 0x24, 0x2A));
+    let column = Stroke::new(1.0, colors.grid);
     for (i, &c) in CENTRES_HZ.iter().enumerate() {
         let x = axes.x_of(c);
         painter.line_segment([pos2(x, plot.top()), pos2(x, plot.bottom())], column);
         let label_at = pos2(x, axes.rect.bottom() - 4.0);
-        painter.text(label_at, Align2::CENTER_BOTTOM, band_label(i), font.clone(), SECONDARY);
+        painter.text(label_at, Align2::CENTER_BOTTOM, band_label(i), font.clone(), colors.secondary);
     }
 }
 
 /// The target curve (dashed) and, when fitted, what the headset makes of it.
-fn draw_curves(painter: &egui::Painter, axes: &Axes, peq: &Peq, fitted: Option<(&[f32; BANDS], f32)>) {
+fn draw_curves(
+    painter: &egui::Painter,
+    colors: &Palette,
+    axes: &Axes,
+    peq: &Peq,
+    fitted: Option<(&[f32; BANDS], f32)>,
+) {
     if let Some((g, shift)) = fitted {
         // Undo the shift so the fit lines up with the target it was made from.
         let heard = axes.trace(&|f| epos_db(g, f) - shift as f64);
-        painter.line(heard, Stroke::new(2.5, ACCENT));
+        painter.line(heard, Stroke::new(2.5, colors.accent));
     }
     let target = axes.trace(&|f| peq.db_at(f));
-    let target_color = if fitted.is_some() { TEXT.gamma_multiply(0.55) } else { ACCENT };
+    let target_color = if fitted.is_some() { colors.secondary } else { colors.accent };
     painter.add(egui::Shape::dashed_line(&target, Stroke::new(1.5, target_color), 5.0, 4.0));
 }
 
@@ -189,13 +202,13 @@ fn scroll_q(ui: &Ui, resp: &egui::Response, band: &mut Band) -> Changed {
     Changed::DONE
 }
 
-fn draw_points(painter: &egui::Painter, axes: &Axes, peq: &Peq, active: impl Fn(usize) -> bool) {
+fn draw_points(painter: &egui::Painter, colors: &Palette, axes: &Axes, peq: &Peq, active: impl Fn(usize) -> bool) {
     let font = theme::font(11.0);
     for (i, b) in peq.bands.iter().enumerate() {
         let p = axes.pos_of(b);
-        let fill = if b.on { ACCENT } else { FAINT };
+        let fill = if b.on { colors.accent } else { colors.subdued };
         painter.circle_filled(p, if active(i) { 7.0 } else { 5.5 }, fill);
-        painter.text(p + vec2(0.0, -12.0), Align2::CENTER_BOTTOM, format!("{}", i + 1), font.clone(), SECONDARY);
+        painter.text(p + vec2(0.0, -12.0), Align2::CENTER_BOTTOM, format!("{}", i + 1), font.clone(), colors.secondary);
     }
 }
 
@@ -209,15 +222,16 @@ fn kind_label(s: &Strings, k: Kind) -> &'static str {
 
 /// The band list. Returns what changed.
 pub fn table(ui: &mut Ui, s: &Strings, peq: &mut Peq) -> Changed {
+    let colors = theme::colors(ui);
     let mut out = Changed::default();
     let mut remove = None;
     egui::Grid::new("peq_bands").num_columns(7).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
         for h in ["", s.peq_type, s.peq_freq, s.peq_gain, "Q", "", ""] {
-            ui.label(egui::RichText::new(h).font(theme::font(12.0)).color(FAINT));
+            ui.label(egui::RichText::new(h).font(theme::font(12.0)).color(colors.subdued));
         }
         ui.end_row();
         for (i, b) in peq.bands.iter_mut().enumerate() {
-            ui.label(egui::RichText::new(format!("{}", i + 1)).color(SECONDARY));
+            ui.label(egui::RichText::new(format!("{}", i + 1)).color(colors.secondary));
             let before = *b;
             egui::ComboBox::from_id_salt(("peq_kind", i)).selected_text(kind_label(s, b.kind)).width(70.0).show_ui(
                 ui,
@@ -238,7 +252,10 @@ pub fn table(ui: &mut Ui, s: &Strings, peq: &mut Peq) -> Changed {
                 out.settled = true;
             }
             if ui
-                .add(egui::Button::new(egui::RichText::new("×").font(theme::font(18.0)).color(DANGER)).frame(false))
+                .add(
+                    egui::Button::new(egui::RichText::new("×").font(theme::font(18.0)).color(colors.danger))
+                        .frame(false),
+                )
                 .clicked()
             {
                 remove = Some(i);

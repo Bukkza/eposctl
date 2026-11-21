@@ -6,7 +6,7 @@ use eposctl::audio::{Endpoint, is_epos};
 use super::super::App;
 use super::per_app::preset_combo;
 use crate::devswitch::Lists;
-use crate::theme::{self, WARN};
+use crate::theme;
 use crate::widgets;
 
 /// Devices to switch to: everything that is not the headset, as (id, name).
@@ -74,7 +74,7 @@ fn headset_line(ui: &mut Ui, s: &crate::strings::Strings, list: &Lists) {
     let names: Vec<&str> =
         list.output.iter().chain(&list.input).filter(|e| is_epos(&e.name)).map(|e| e.name.as_str()).collect();
     if names.is_empty() {
-        ui.label(RichText::new(s.devsw_no_headset).font(theme::font(12.5)).color(WARN));
+        ui.label(RichText::new(s.devsw_no_headset).font(theme::font(12.5)).color(theme::colors(ui).warn));
     } else {
         widgets::desc(ui, &s.devsw_headset.replace("{name}", &names.join(" · ")));
     }

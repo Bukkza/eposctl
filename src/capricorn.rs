@@ -147,6 +147,11 @@ impl Frame {
                 Message::SidetoneChanged { raw: at(3).unwrap_or(0) }
             }
             (kind::NOTIFICATION, Some(0x17), Some(0x07)) => Message::Anc { on: at(2) == Some(1) },
+            (0x01FF, Some(0x08), Some(0xF0))
+                if self.node == 4 && self.body.len() == 14 && w == [0x08, 0xF0, 3, 0, 0, 0, 0] =>
+            {
+                Message::SmartButtonPressed
+            }
             _ => Message::Unknown,
         }
     }
@@ -175,6 +180,7 @@ pub enum Message {
     Anc {
         on: bool,
     },
+    SmartButtonPressed,
     Unknown,
 }
 
@@ -229,6 +235,21 @@ mod tests {
     fn link_event() {
         let f = Frame::parse(&hex("01 eb fe 01 00 10 01 00 00 08 00 f4 00 01 00 f0 00 01 00 01 00")).unwrap();
         assert_eq!(f.decode(), Message::HeadsetLink { connected: true });
+    }
+
+    #[test]
+    fn smart_button_event_matches_the_full_captured_body() {
+        let mut f =
+            Frame { version: 1, kind: 0x01FF, node: 4, body: vec![8, 0, 0xF0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
+        assert_eq!(Frame::parse(&f.encode()).unwrap().decode(), Message::SmartButtonPressed);
+        f.body[6] = 1;
+        assert_eq!(f.decode(), Message::Unknown);
+        f.body[6] = 0;
+        f.node = 5;
+        assert_eq!(f.decode(), Message::Unknown);
+        f.node = 4;
+        f.body.push(0);
+        assert_eq!(f.decode(), Message::Unknown);
     }
 
     #[test]

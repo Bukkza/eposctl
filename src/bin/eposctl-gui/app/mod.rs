@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::time::Instant;
 
-use eframe::egui::{self, Color32, Frame, Margin, Ui};
+use eframe::egui::{self, Frame, Margin, Ui, UiBuilder, vec2};
 
 use crate::autostart;
 use crate::autoswitch::AutoSwitch;
@@ -22,8 +22,9 @@ use crate::editor::Editor;
 use crate::hotkeys::{self, Action};
 use crate::instance::ShowEvent;
 use crate::meters::Meters;
+use crate::mic_tools::MicTools;
 use crate::strings::{Strings, t};
-use crate::theme::{self, BG, PANEL};
+use crate::theme;
 use crate::tray::{self, Tray};
 use crate::widgets::Notice;
 use crate::window::Window;
@@ -58,6 +59,7 @@ pub struct App {
     low_battery: battery::LowAlarm,
     mixer: chatmix::Mixer,
     meters: Meters,
+    mic_tools: MicTools,
     /// The official EPOS Gaming Suite next to eposctl.
     official: crate::official::Official,
     autostart: bool,
@@ -100,12 +102,14 @@ impl App {
         let ctx = &cc.egui_ctx;
         theme::install_fonts(ctx);
         theme::install_style(ctx);
+        let cfg = Config::load();
+        cfg.appearance.apply(ctx);
         let wake = ctx.clone();
         let (dev, tx) = worker::spawn(move || wake.request_repaint());
         let flags = Arc::new(tray::Flags::default());
         show_event.watch(flags.clone(), ctx.clone());
         let mut app = Self {
-            cfg: Config::load(),
+            cfg,
             autosave: Autosave::default(),
             editor: Editor::new(),
             dev,
@@ -122,6 +126,7 @@ impl App {
             low_battery: battery::LowAlarm::default(),
             mixer: chatmix::Mixer::spawn(),
             meters: Meters::default(),
+            mic_tools: MicTools::default(),
             official: crate::official::Official::default(),
             autostart: autostart::is_enabled(),
             quitting: false,
@@ -176,6 +181,7 @@ impl App {
 
     /// Stop everything that changes the system while we run, and save.
     fn shut_down(&mut self) {
+        self.mic_tools.close();
         self.editor.stop_compare();
         self.mixer.shutdown();
         self.editor.set_metering(false);
@@ -201,18 +207,25 @@ impl eframe::App for App {
         self.record_hotkey(ui);
         self.undo_shortcuts(ui);
 
+        let colors = theme::colors(ui);
         egui::Panel::left("nav")
-            .exact_size(88.0)
+            .exact_size(172.0)
             .resizable(false)
             .show_separator_line(false)
-            .frame(Frame::new().fill(PANEL))
+            .frame(Frame::new().fill(colors.sidebar).inner_margin(Margin::symmetric(12, 20)))
             .show(ui, |ui| self.nav(ui));
 
-        let margin = Margin { left: 32, right: 32, top: 26, bottom: 20 };
-        egui::CentralPanel::no_frame().frame(Frame::new().fill(BG).inner_margin(margin)).show(ui, |ui| {
-            self.header(ui, &d);
-            ui.add_space(16.0);
-            self.page(ui, &d);
+        let margin = Margin { left: 24, right: 24, top: 24, bottom: 0 };
+        egui::CentralPanel::no_frame().frame(Frame::new().fill(colors.bg).inner_margin(margin)).show(ui, |ui| {
+            let area = ui.available_rect_before_wrap();
+            let pad = ((area.width() - theme::CONTENT_WIDTH) * 0.5).max(0.0);
+            let content = area.shrink2(vec2(pad, 0.0));
+            ui.scope_builder(UiBuilder::new().max_rect(content), |ui| {
+                ui.set_width(content.width());
+                self.header(ui, &d);
+                ui.add_space(theme::SECTION_GAP);
+                self.page(ui, &d);
+            });
         });
     }
 
@@ -220,7 +233,7 @@ impl eframe::App for App {
         self.shut_down();
     }
 
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        Color32::from_rgb(0x17, 0x18, 0x1E).to_normalized_gamma_f32()
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        theme::palette(visuals.dark_mode).bg.to_normalized_gamma_f32()
     }
 }

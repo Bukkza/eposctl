@@ -4,11 +4,15 @@
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, ViewportCommand};
+use eposctl::apo::DeviceId;
+use eposctl::headset::H3PRO_DONGLE_PID;
+use eposctl::hid::EPOS_VID;
 
 use super::App;
 use super::pages::Page;
 use crate::autoswitch::Next;
 use crate::catalog::PresetId;
+use crate::config::SmartButton;
 use crate::devswitch;
 use crate::hotkeys::{self, Action, Combo};
 use crate::notify;
@@ -28,6 +32,7 @@ impl App {
         self.connect();
         self.editor.sync(ctx.dragged_id().is_some());
         self.auto_switch(ctx);
+        self.smart_button_requests();
         self.headset_status();
         self.meter(ctx);
 
@@ -50,6 +55,7 @@ impl App {
 
     /// The window's close button: to the tray if enabled, else exit.
     fn close(&mut self, ctx: &egui::Context) {
+        self.mic_tools.close();
         if self.cfg.close_to_tray && self.tray.is_some() {
             self.window.hide(ctx);
             self.editor.stop_compare();
@@ -69,6 +75,26 @@ impl App {
         if let Some(id) = self.flags.take_preset().as_deref().and_then(PresetId::from_key) {
             self.connect();
             self.apply_preset(id);
+        }
+    }
+
+    fn smart_button_requests(&mut self) {
+        let count = std::mem::take(&mut self.dev.lock().unwrap().smart_button_presses);
+        let h3pro = DeviceId { vid: EPOS_VID, pid: H3PRO_DONGLE_PID };
+        let action = self.cfg.smart_button;
+        if count == 0 || action == SmartButton::Off || self.editor.device() != Some(h3pro) {
+            return;
+        }
+        // The official app also acts on the press. Leave it in charge while running.
+        if self.official.busy() || eposctl::suite::status().app_running {
+            return;
+        }
+        for _ in 0..count {
+            match action {
+                SmartButton::NextPreset => self.step_preset(1),
+                SmartButton::ToggleSurround => self.toggle_surround(),
+                SmartButton::Off => {}
+            }
         }
     }
 
@@ -167,9 +193,10 @@ impl App {
         }
     }
 
-    /// Mic meters run while the Mic page is on screen.
+    /// Mic capture and the APO spectrum run while the Mic page is on screen.
     fn meter(&mut self, ctx: &egui::Context) {
         let wanted = self.view.page == Page::Mic && self.window.is_shown(ctx) && !self.quitting;
+        self.mic_tools.tick(ctx, wanted);
         self.editor.set_metering(wanted);
         if !wanted || !self.editor.is_metering() {
             return;

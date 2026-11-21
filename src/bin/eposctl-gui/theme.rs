@@ -1,25 +1,111 @@
-//! Palette, fonts and widget styling. Dark, close to the official suite:
-//! charcoal surfaces with the EPOS teal as the only accent.
+//! Shared typography, spacing and colors for the desktop UI.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use eframe::egui::{self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, TextStyle};
+use eframe::egui::{self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, TextStyle, Ui};
+use serde::{Deserialize, Serialize};
 
-pub const BG: Color32 = Color32::from_rgb(0x17, 0x18, 0x1E);
-pub const PANEL: Color32 = Color32::from_rgb(0x1F, 0x20, 0x27);
-pub const RAISED: Color32 = Color32::from_rgb(0x2A, 0x2C, 0x34);
-pub const HAIRLINE: Color32 = Color32::from_rgb(0x3A, 0x3D, 0x45);
-pub const TEXT: Color32 = Color32::from_rgb(0xF2, 0xF2, 0xF2);
-pub const SECONDARY: Color32 = Color32::from_rgb(0x8E, 0x90, 0x99);
-pub const FAINT: Color32 = Color32::from_rgb(0x5C, 0x5F, 0x68);
-pub const ACCENT: Color32 = Color32::from_rgb(0x44, 0xEA, 0xD6);
-pub const ACCENT_DIM: Color32 = Color32::from_rgb(0x1E, 0x4A, 0x47);
-pub const WARN: Color32 = Color32::from_rgb(0xF2, 0xA9, 0x3B);
-pub const DANGER: Color32 = Color32::from_rgb(0xE5, 0x48, 0x4D);
+pub const GAP: f32 = 16.0;
+pub const SECTION_GAP: f32 = 24.0;
+pub const CONTROL_HEIGHT: f32 = 44.0;
+pub const CONTENT_WIDTH: f32 = 744.0;
+pub const R_SMALL: u8 = 10;
+pub const R_CARD: u8 = 18;
 
-pub const R_SMALL: u8 = 6;
-pub const R_CARD: u8 = 12;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Appearance {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Appearance {
+    pub fn apply(self, ctx: &egui::Context) {
+        ctx.set_theme(match self {
+            Self::System => egui::ThemePreference::System,
+            Self::Light => egui::ThemePreference::Light,
+            Self::Dark => egui::ThemePreference::Dark,
+        });
+    }
+}
+
+pub struct Palette {
+    pub bg: Color32,
+    pub sidebar: Color32,
+    pub panel: Color32,
+    pub raised: Color32,
+    pub hover: Color32,
+    pub line: Color32,
+    pub grid: Color32,
+    pub text: Color32,
+    pub secondary: Color32,
+    pub subdued: Color32,
+    pub accent: Color32,
+    pub accent_hover: Color32,
+    pub accent_dim: Color32,
+    pub on_accent: Color32,
+    pub success: Color32,
+    pub warn: Color32,
+    pub danger: Color32,
+    pub shadow: Color32,
+}
+
+const fn rgb(hex: u32) -> Color32 {
+    Color32::from_rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
+}
+
+const LIGHT: Palette = Palette {
+    bg: rgb(0xF4F6FA),
+    sidebar: rgb(0xEAF0F8),
+    panel: rgb(0xFFFFFF),
+    raised: rgb(0xEDF2F9),
+    hover: rgb(0xE1EAF7),
+    line: rgb(0xD8E2EF),
+    grid: rgb(0xE9EFF7),
+    text: rgb(0x152339),
+    secondary: rgb(0x46566F),
+    subdued: rgb(0x586780),
+    accent: rgb(0x2254C9),
+    accent_hover: rgb(0x1948B7),
+    accent_dim: rgb(0xE5EDFF),
+    on_accent: rgb(0xFFFFFF),
+    success: rgb(0x187050),
+    warn: rgb(0x8A4A17),
+    danger: rgb(0xB12B3F),
+    shadow: Color32::from_black_alpha(12),
+};
+
+const DARK: Palette = Palette {
+    bg: rgb(0x111622),
+    sidebar: rgb(0x151C2B),
+    panel: rgb(0x1C2535),
+    raised: rgb(0x263349),
+    hover: rgb(0x303F58),
+    line: rgb(0x34435B),
+    grid: rgb(0x2A374C),
+    text: rgb(0xF2F6FD),
+    secondary: rgb(0xBBC9DE),
+    subdued: rgb(0xA3B3CC),
+    accent: rgb(0x98B9FF),
+    accent_hover: rgb(0xB0CAFF),
+    accent_dim: rgb(0x283E67),
+    on_accent: rgb(0x102248),
+    success: rgb(0x75D8AF),
+    warn: rgb(0xF5C17E),
+    danger: rgb(0xFFA2AF),
+    shadow: Color32::from_black_alpha(32),
+};
+
+pub fn palette(dark: bool) -> &'static Palette {
+    if dark { &DARK } else { &LIGHT }
+}
+
+pub fn colors(ui: &Ui) -> &'static Palette {
+    palette(ui.visuals().dark_mode)
+}
 
 /// Semibold face for headings and numbers.
 pub fn strong() -> FontFamily {
@@ -47,15 +133,17 @@ fn load(defs: &mut FontDefinitions, key: &str, file: &str, index: u32) -> bool {
     }
 }
 
-/// Use the system's Segoe UI for Latin and Microsoft YaHei for CJK. Nothing is
-/// bundled; missing files fall back to egui's built-in fonts.
+/// Use a system display face with Microsoft YaHei for CJK fallback.
 pub fn install_fonts(ctx: &egui::Context) {
     let mut defs = FontDefinitions::default();
     let mut regular = Vec::new();
     let mut bold = Vec::new();
     for (key, file, is_bold) in [
+        ("sf-pro", "SF-Pro-Display-Regular.otf", false),
+        ("segoe-variable", "SegUIVar.ttf", false),
         ("segoe", "segoeui.ttf", false),
         ("yahei", "msyh.ttc", false),
+        ("sf-pro-semibold", "SF-Pro-Display-Semibold.otf", true),
         ("segoe-sb", "seguisb.ttf", true),
         ("yahei-b", "msyhbd.ttc", true),
     ] {
@@ -79,69 +167,74 @@ pub fn install_fonts(ctx: &egui::Context) {
     ctx.set_fonts(defs);
 }
 
-pub fn install_style(ctx: &egui::Context) {
-    let mut v = egui::Visuals::dark();
-    v.window_fill = PANEL;
-    v.panel_fill = BG;
-    v.extreme_bg_color = BG;
-    v.faint_bg_color = PANEL;
-    v.override_text_color = None;
+fn visuals(theme: egui::Theme) -> egui::Visuals {
+    let mut v = match theme {
+        egui::Theme::Light => egui::Visuals::light(),
+        egui::Theme::Dark => egui::Visuals::dark(),
+    };
+    let c = palette(v.dark_mode);
+    v.window_fill = c.panel;
+    v.panel_fill = c.bg;
+    v.extreme_bg_color = c.raised;
+    v.faint_bg_color = c.raised;
     v.window_corner_radius = CornerRadius::same(R_CARD);
-    v.window_stroke = Stroke::new(1.0, HAIRLINE);
-    v.selection.bg_fill = ACCENT_DIM;
-    v.selection.stroke = Stroke::new(1.0, ACCENT);
-    v.hyperlink_color = ACCENT;
+    v.window_stroke = Stroke::new(1.0, c.line);
+    v.selection.bg_fill = c.accent_dim;
+    v.selection.stroke = Stroke::new(1.0, c.accent);
+    v.hyperlink_color = c.accent;
     v.slider_trailing_fill = true;
     v.handle_shape = egui::style::HandleShape::Circle;
 
     let w = &mut v.widgets;
     let r = CornerRadius::same(R_SMALL);
-    w.noninteractive.bg_fill = PANEL;
-    w.noninteractive.weak_bg_fill = PANEL;
-    w.noninteractive.bg_stroke = Stroke::new(1.0, HAIRLINE);
-    w.noninteractive.fg_stroke = Stroke::new(1.0, SECONDARY);
+    w.noninteractive.bg_fill = c.panel;
+    w.noninteractive.weak_bg_fill = c.panel;
+    w.noninteractive.bg_stroke = Stroke::new(1.0, c.line);
+    w.noninteractive.fg_stroke = Stroke::new(1.0, c.text);
     w.noninteractive.corner_radius = r;
 
-    w.inactive.bg_fill = RAISED;
-    w.inactive.weak_bg_fill = RAISED;
+    w.inactive.bg_fill = c.raised;
+    w.inactive.weak_bg_fill = c.raised;
     w.inactive.bg_stroke = Stroke::NONE;
-    w.inactive.fg_stroke = Stroke::new(1.0, TEXT);
+    w.inactive.fg_stroke = Stroke::new(1.0, c.text);
     w.inactive.corner_radius = r;
 
-    w.hovered.bg_fill = Color32::from_rgb(0x34, 0x37, 0x40);
-    w.hovered.weak_bg_fill = Color32::from_rgb(0x34, 0x37, 0x40);
-    w.hovered.bg_stroke = Stroke::new(1.0, HAIRLINE);
-    w.hovered.fg_stroke = Stroke::new(1.5, TEXT);
+    w.hovered.bg_fill = c.hover;
+    w.hovered.weak_bg_fill = c.hover;
+    w.hovered.bg_stroke = Stroke::new(1.0, c.line);
+    w.hovered.fg_stroke = Stroke::new(1.5, c.text);
     w.hovered.corner_radius = r;
     w.hovered.expansion = 0.0;
 
-    w.active.bg_fill = ACCENT_DIM;
-    w.active.weak_bg_fill = ACCENT_DIM;
-    w.active.bg_stroke = Stroke::new(1.0, ACCENT);
-    w.active.fg_stroke = Stroke::new(1.5, TEXT);
+    w.active.bg_fill = c.accent_dim;
+    w.active.weak_bg_fill = c.accent_dim;
+    w.active.bg_stroke = Stroke::new(1.0, c.accent);
+    w.active.fg_stroke = Stroke::new(1.5, c.text);
     w.active.corner_radius = r;
     w.active.expansion = 0.0;
 
     w.open = w.active;
+    v
+}
 
-    // Always dark: with the default "follow the system" preference, a light
-    // Windows theme switched egui's stock widgets (combo boxes, drag values,
-    // text fields, menus) to light visuals inside the dark panels.
-    ctx.set_theme(egui::Theme::Dark);
-    ctx.set_visuals_of(egui::Theme::Dark, v);
+pub fn install_style(ctx: &egui::Context) {
+    for theme in [egui::Theme::Light, egui::Theme::Dark] {
+        ctx.set_visuals_of(theme, visuals(theme));
+    }
     ctx.all_styles_mut(|s| {
         s.text_styles = [
-            (TextStyle::Small, font(12.0)),
-            (TextStyle::Body, font(14.0)),
+            (TextStyle::Small, font(13.0)),
+            (TextStyle::Body, font(15.0)),
             (TextStyle::Button, font(14.0)),
-            (TextStyle::Heading, font_strong(20.0)),
+            (TextStyle::Heading, font_strong(19.0)),
             (TextStyle::Monospace, FontId::monospace(13.0)),
         ]
         .into();
         s.spacing.item_spacing = egui::vec2(8.0, 8.0);
         s.spacing.button_padding = egui::vec2(14.0, 7.0);
         s.spacing.slider_rail_height = 4.0;
-        s.spacing.interact_size.y = 30.0;
+        s.spacing.interact_size.y = CONTROL_HEIGHT;
+        s.animation_time = 0.14;
         s.interaction.selectable_labels = false;
     });
 }

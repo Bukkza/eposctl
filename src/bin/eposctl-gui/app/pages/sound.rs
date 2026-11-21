@@ -1,12 +1,12 @@
 //! Sound page: presets, the speaker EQ, surround and reverb.
 
-use eframe::egui::{RichText, Ui, vec2};
+use eframe::egui::{RichText, Ui};
 use eposctl::apo::layout::BANDS;
 
 use super::super::{App, EqTarget};
 use crate::catalog::{self, PresetId};
 use crate::config::{CustomPreset, Sound};
-use crate::theme::DANGER;
+use crate::theme;
 use crate::{eq, widgets};
 
 /// What the preset bar asked for this frame.
@@ -23,47 +23,56 @@ impl App {
             self.apo_missing(ui);
             // Without the EPOS driver, Equalizer APO can still do the EQ.
             if self.view.eqapo_installed {
-                ui.add_space(12.0);
+                ui.add_space(theme::GAP);
                 self.peq_panel(ui);
             }
             return;
         };
-        self.preset_bar(ui, &sound);
-        ui.add_space(16.0);
+        widgets::card(ui, |ui| self.preset_bar(ui, &sound));
+        ui.add_space(theme::GAP);
         self.speaker_eq_panel(ui);
-        ui.add_space(12.0);
+        ui.add_space(theme::GAP);
         if self.view.peq_open && !self.editor.is_comparing() {
             self.peq_panel(ui);
-            ui.add_space(12.0);
+            ui.add_space(theme::GAP);
         }
         self.surround_panel(ui, &sound);
-        ui.add_space(12.0);
+        ui.add_space(theme::GAP);
         self.mix_panel(ui);
     }
 
     // ---- presets ----
 
     fn preset_bar(&mut self, ui: &mut Ui, sound: &Sound) {
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
-            let mut edits = PresetEdits { apply: self.factory_chips(ui, sound), ..PresetEdits::default() };
-            self.custom_chips(ui, sound, &mut edits);
-            ui.add_space(4.0);
-            self.save_preset_field(ui, sound);
-            self.apply_preset_edits(edits, sound);
+        let s = self.s();
+        widgets::heading_row(ui, s.sound_presets, |ui| {
+            if self.view.naming.is_none() && widgets::ghost(ui, &format!("+  {}", s.save_preset)).clicked() {
+                self.view.naming = Some(String::new());
+            }
         });
+        let mut edits = PresetEdits::default();
+        for (label, game) in [(s.sound_factory_presets, false), (s.sound_game_presets, true)] {
+            let chosen = ui.horizontal_wrapped(|ui| {
+                ui.allocate_ui(eframe::egui::vec2(68.0, 20.0), |ui| widgets::desc(ui, label));
+                self.factory_chips(ui, sound, game)
+            });
+            edits.apply = chosen.inner.or(edits.apply);
+        }
+        if !self.cfg.custom_presets.is_empty() || self.view.naming.is_some() {
+            widgets::divider(ui);
+            ui.horizontal_wrapped(|ui| {
+                self.custom_chips(ui, sound, &mut edits);
+                self.save_preset_field(ui, sound);
+            });
+        }
+        self.apply_preset_edits(edits, sound);
     }
 
     /// Factory and game presets; returns the one clicked.
-    fn factory_chips(&self, ui: &mut Ui, sound: &Sound) -> Option<PresetId> {
+    fn factory_chips(&self, ui: &mut Ui, sound: &Sound, game: bool) -> Option<PresetId> {
         let s = self.s();
         let mut chosen = None;
-        let mut first_game = true;
-        for p in catalog::factory() {
-            let game = catalog::is_game(p);
-            if game && std::mem::take(&mut first_game) {
-                ui.add_space(6.0);
-            }
+        for p in catalog::factory().filter(|p| catalog::is_game(p) == game) {
             let on = sound.matches(&Sound::of_preset(p));
             let mut r = widgets::chip(ui, catalog::factory_label(s, p.name), on);
             if game {
@@ -89,7 +98,7 @@ impl App {
                     edits.overwrite = Some(i);
                     ui.close();
                 }
-                if ui.button(RichText::new(s.delete).color(DANGER)).clicked() {
+                if ui.button(RichText::new(s.delete).color(theme::colors(ui).danger)).clicked() {
                     edits.delete = Some(i);
                     ui.close();
                 }
@@ -97,13 +106,10 @@ impl App {
         }
     }
 
-    /// "+ Save as preset", which turns into a name field.
+    /// The name field shown while saving a preset.
     fn save_preset_field(&mut self, ui: &mut Ui, sound: &Sound) {
         let s = self.s();
         let Some(name) = &mut self.view.naming else {
-            if widgets::ghost(ui, &format!("+  {}", s.save_preset)).clicked() {
-                self.view.naming = Some(String::new());
-            }
             return;
         };
         let te = ui.add(widgets::text_field(name, s.preset_name_hint, 150.0));
@@ -142,9 +148,9 @@ impl App {
 
     fn speaker_eq_panel(&mut self, ui: &mut Ui) {
         let s = self.s();
-        widgets::panel().show(ui, |ui| {
-            widgets::heading_row(ui, s.equalizer, |ui| self.speaker_eq_actions(ui));
-            ui.add_space(6.0);
+        widgets::panel(ui).show(ui, |ui| {
+            widgets::heading(ui, s.equalizer);
+            ui.add_space(8.0);
             let editable = !self.editor.is_comparing();
             ui.add_enabled_ui(editable, |ui| {
                 let mut g = self.editor.settings().map(eposctl::apo::Settings::speaker_eq).unwrap_or_default();
@@ -154,15 +160,26 @@ impl App {
             });
             self.eq_notice_line(ui, EqTarget::Speaker);
             widgets::desc(ui, s.eq_hint);
+            widgets::divider(ui);
+            ui.horizontal_wrapped(|ui| self.speaker_eq_actions(ui));
         });
     }
 
-    /// Right to left: reset, import, parametric, undo, A/B compare.
+    /// Compact toolbar underneath the graph, wrapping on smaller windows.
     fn speaker_eq_actions(&mut self, ui: &mut Ui) {
         let s = self.s();
         let comparing = self.editor.is_comparing();
-        if widgets::ghost_toggle(ui, s.reset, !comparing, false).clicked() {
-            self.apply(|st| st.set_speaker_eq(&[0.0; BANDS]));
+        let label = if comparing { s.comparing } else { s.compare };
+        let enabled = comparing || self.editor.differs_from_reference();
+        if widgets::ghost_toggle(ui, label, enabled, comparing).on_hover_text(s.compare_tip).clicked() {
+            if comparing {
+                self.editor.stop_compare();
+            } else {
+                self.editor.start_compare();
+            }
+        }
+        if widgets::ghost_toggle(ui, s.undo, self.editor.can_undo(), false).on_hover_text(s.undo_tip).clicked() {
+            self.undo();
         }
         if widgets::ghost_toggle(ui, s.import, !comparing, false).on_hover_text(s.eq_import_tip).clicked() {
             self.import_eq(EqTarget::Speaker);
@@ -173,17 +190,8 @@ impl App {
                 self.view.eqapo_installed = eposctl::eqapo::config_dir().is_some();
             }
         }
-        if widgets::ghost_toggle(ui, s.undo, self.editor.can_undo(), false).on_hover_text(s.undo_tip).clicked() {
-            self.undo();
-        }
-        let label = if comparing { s.comparing } else { s.compare };
-        let enabled = comparing || self.editor.differs_from_reference();
-        if widgets::ghost_toggle(ui, label, enabled, comparing).on_hover_text(s.compare_tip).clicked() {
-            if comparing {
-                self.editor.stop_compare();
-            } else {
-                self.editor.start_compare();
-            }
+        if widgets::ghost_toggle(ui, s.reset, !comparing, false).clicked() {
+            self.apply(|st| st.set_speaker_eq(&[0.0; BANDS]));
         }
     }
 

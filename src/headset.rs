@@ -13,6 +13,7 @@ use crate::hid::{HidDevice, find_vendor_collections};
 
 /// Node address of the headset behind the dongle (observed in every headset frame).
 pub const HEADSET_NODE: u16 = 4;
+pub const H3PRO_DONGLE_PID: u16 = 0x0303;
 
 /// `(group, command)` pairs from the service's opcode table.
 pub mod cmd {
@@ -45,6 +46,10 @@ impl Headset {
             .first()
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no EPOS vendor HID collection found"))?;
         Ok(Self { dev: HidDevice::open_rw(info)?, node: HEADSET_NODE, pending: Default::default() })
+    }
+
+    pub fn pid(&self) -> u16 {
+        self.dev.info.pid
     }
 
     fn stash(&self, f: Frame) {

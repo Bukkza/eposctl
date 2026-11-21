@@ -232,7 +232,7 @@ service's query burst right after the headset reconnected):
 | `0x0004` | `01` | `20` | `1` | read side of setter `01/1F`, meaning unknown; queried on connect |
 | `0x0004` | `01` | `14` | `0x0101` | PID number (`parsePIDNumber`), queried on connect |
 | `0x0004` | `06` | `14` | 4 words | Bluetooth address (`parseBDAddr`), queried on connect. Identifies the unit; eposctl redacts it |
-| `0x01FF` | `08` | `F0` | `3, 0…` | unknown, seen once when other headset buttons were pressed |
+| `0x01FF` | `08` | `F0` | `3, 0, 0, 0, 0` | Smart button short press, observed three times on H3PRO dongle `1395:0303`, node `4`. No matching report on the consumer-control collection. |
 | `0x3005` | (request's) | (request's) | none | from node 1 (the dongle) right after each request while the headset was off; never seen while it was linked, so "not delivered" |
 | `0x2004` | (request's) | (request's) | `0, 0` | from the headset for a request it does not support (`0A/17` on the H3PRO) |
 

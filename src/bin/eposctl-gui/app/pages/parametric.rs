@@ -34,7 +34,7 @@ impl App {
             cfg.output = PeqOutput::EqApo;
         }
         let before = cfg.output;
-        let changed = widgets::panel().show(ui, |ui| self.peq_contents(ui, &mut cfg)).inner;
+        let changed = widgets::panel(ui).show(ui, |ui| self.peq_contents(ui, &mut cfg)).inner;
         self.peq_commit(cfg, before, changed);
     }
 

@@ -7,7 +7,7 @@ use eframe::egui::{
 
 use eposctl::eqfile::{CENTRES_HZ, band_freq, band_label};
 
-use crate::theme::{self, ACCENT, BG, FAINT, HAIRLINE, SECONDARY, TEXT};
+use crate::theme::{self, Palette};
 
 pub const MIN_DB: f32 = -6.0;
 pub const MAX_DB: f32 = 6.0;
@@ -95,6 +95,7 @@ pub fn editor(ui: &mut Ui, id_salt: &str, gains: &mut Gains, height: f32, levels
     let id = ui.scope_id().with(id_salt).with("state");
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::click_and_drag());
     let g = Geometry::new(rect, gains.len());
+    let colors = theme::colors(ui);
     let painter = ui.painter_at(rect.expand(2.0));
 
     let mut state = Interaction::load(ui, id);
@@ -106,15 +107,15 @@ pub fn editor(ui: &mut Ui, id_salt: &str, gains: &mut Gains, height: f32, levels
 
     let hovered = resp.hover_pos().filter(|p| g.plot.expand2(vec2(12.0, 12.0)).contains(*p)).map(|p| g.nearest(p.x));
     let focused = resp.has_focus();
-    draw_grid(&painter, &g);
+    draw_grid(&painter, colors, &g);
     if let Some(levels) = levels {
-        draw_levels(&painter, &g, levels);
+        draw_levels(&painter, colors, &g, levels);
     }
-    draw_curve(&painter, &g, gains);
-    draw_nodes(&painter, &g, gains, state, hovered, focused);
+    draw_curve(&painter, colors, &g, gains);
+    draw_nodes(&painter, colors, &g, gains, state, hovered, focused);
     let show = state.dragging.or(hovered).or(state.selected.filter(|_| focused));
     if let Some(i) = show {
-        draw_readout(&painter, &g, gains, i);
+        draw_readout(&painter, colors, &g, gains, i);
     }
 
     if resp.hovered() {
@@ -201,29 +202,29 @@ fn keys(ui: &Ui, resp: &Response, state: &mut Interaction, gains: &mut Gains) ->
 
 // ---- drawing ----
 
-fn draw_grid(painter: &Painter, g: &Geometry) {
+fn draw_grid(painter: &Painter, colors: &Palette, g: &Geometry) {
     let (plot, font) = (g.plot, theme::font(11.0));
     for db in [-6.0f32, -3.0, 0.0, 3.0, 6.0] {
         let y = g.y_of(db);
-        let c = if db == 0.0 { HAIRLINE } else { Color32::from_rgb(0x26, 0x28, 0x2F) };
+        let c = if db == 0.0 { colors.line } else { colors.grid };
         painter.line_segment([pos2(plot.left(), y), pos2(plot.right(), y)], Stroke::new(1.0, c));
         let txt = if db > 0.0 { format!("+{db:.0}") } else { format!("{db:.0}") };
-        painter.text(pos2(plot.left() - 10.0, y), Align2::RIGHT_CENTER, txt, font.clone(), FAINT);
+        painter.text(pos2(plot.left() - 10.0, y), Align2::RIGHT_CENTER, txt, font.clone(), colors.subdued);
     }
-    let column = Stroke::new(1.0, Color32::from_rgb(0x22, 0x24, 0x2A));
+    let column = Stroke::new(1.0, colors.grid);
     for i in 0..g.n {
         let x = g.x_of(i);
         painter.line_segment([pos2(x, plot.top()), pos2(x, plot.bottom())], column);
     }
     let bottom = g.rect.bottom() - 4.0;
     for i in 0..g.n {
-        painter.text(pos2(g.x_of(i), bottom), Align2::CENTER_BOTTOM, band_label(i), font.clone(), SECONDARY);
+        painter.text(pos2(g.x_of(i), bottom), Align2::CENTER_BOTTOM, band_label(i), font.clone(), colors.secondary);
     }
-    painter.text(pos2(plot.left() - 10.0, bottom), Align2::RIGHT_BOTTOM, "Hz", font, FAINT);
+    painter.text(pos2(plot.left() - 10.0, bottom), Align2::RIGHT_BOTTOM, "Hz", font, colors.subdued);
 }
 
 /// Live level bars, under everything else that moves.
-fn draw_levels(painter: &Painter, g: &Geometry, levels: &[f32]) {
+fn draw_levels(painter: &Painter, colors: &Palette, g: &Geometry, levels: &[f32]) {
     let plot = g.plot;
     let w = (plot.width() / (g.n - 1) as f32 * 0.42).min(30.0);
     for (i, &db) in levels.iter().enumerate().take(g.n) {
@@ -234,7 +235,7 @@ fn draw_levels(painter: &Painter, g: &Geometry, levels: &[f32]) {
         let x = g.x_of(i);
         let top = plot.bottom() - plot.height() * t;
         let bar = Rect::from_min_max(pos2(x - w / 2.0, top), pos2(x + w / 2.0, plot.bottom()));
-        painter.rect_filled(bar, CornerRadius::same(3), SECONDARY.gamma_multiply(0.16));
+        painter.rect_filled(bar, CornerRadius::same(3), colors.secondary.gamma_multiply(0.16));
     }
 }
 
@@ -256,26 +257,27 @@ fn curve_points(g: &Geometry, gains: &Gains) -> Vec<Pos2> {
 }
 
 /// The curve, with a fill down (or up) to 0 dB.
-fn draw_curve(painter: &Painter, g: &Geometry, gains: &Gains) {
+fn draw_curve(painter: &Painter, colors: &Palette, g: &Geometry, gains: &Gains) {
     let curve = curve_points(g, gains);
     let zero = g.y_of(0.0);
-    let fill = ACCENT.gamma_multiply(0.14);
+    let fill = colors.accent.gamma_multiply(0.30);
     let mut mesh = Mesh::default();
     for w in curve.windows(2) {
         let base = mesh.vertices.len() as u32;
         mesh.colored_vertex(w[0], fill);
         mesh.colored_vertex(w[1], fill);
-        mesh.colored_vertex(pos2(w[1].x, zero), fill);
-        mesh.colored_vertex(pos2(w[0].x, zero), fill);
+        mesh.colored_vertex(pos2(w[1].x, zero), Color32::TRANSPARENT);
+        mesh.colored_vertex(pos2(w[0].x, zero), Color32::TRANSPARENT);
         mesh.add_triangle(base, base + 1, base + 2);
         mesh.add_triangle(base, base + 2, base + 3);
     }
     painter.add(mesh);
-    painter.line(curve, Stroke::new(2.5, ACCENT));
+    painter.line(curve, Stroke::new(2.5, colors.accent));
 }
 
 fn draw_nodes(
     painter: &Painter,
+    colors: &Palette,
     g: &Geometry,
     gains: &Gains,
     state: Interaction,
@@ -287,32 +289,32 @@ fn draw_nodes(
         let active = state.dragging == Some(i) || (state.dragging.is_none() && hovered == Some(i));
         let is_sel = focused && state.selected == Some(i);
         if active || is_sel {
-            let guide = Stroke::new(1.0, ACCENT.gamma_multiply(0.25));
+            let guide = Stroke::new(1.0, colors.accent.gamma_multiply(0.25));
             painter.line_segment([pos2(p.x, g.plot.top()), pos2(p.x, g.plot.bottom())], guide);
         }
         let r = if active { 7.5 } else { 6.0 };
         if active {
-            painter.circle_filled(p, r, ACCENT);
+            painter.circle_filled(p, r, colors.accent);
         } else {
-            painter.circle_filled(p, r, BG);
-            painter.circle_stroke(p, r, Stroke::new(2.0, ACCENT));
+            painter.circle_filled(p, r, colors.panel);
+            painter.circle_stroke(p, r, Stroke::new(2.0, colors.accent));
         }
         if is_sel {
-            painter.circle_stroke(p, r + 4.0, Stroke::new(1.5, ACCENT.gamma_multiply(0.6)));
+            painter.circle_stroke(p, r + 4.0, Stroke::new(1.5, colors.accent.gamma_multiply(0.6)));
         }
     }
 }
 
 /// Frequency and gain over node `i`, kept inside the widget.
-fn draw_readout(painter: &Painter, g: &Geometry, gains: &Gains, i: usize) {
+fn draw_readout(painter: &Painter, colors: &Palette, g: &Geometry, gains: &Gains, i: usize) {
     let p = g.node(i, gains);
     let txt = format!("{}  {:+.1} dB", band_freq(i), gains[i]);
-    let galley = painter.layout_no_wrap(txt, theme::font_strong(12.0), TEXT);
+    let galley = painter.layout_no_wrap(txt, theme::font_strong(12.0), colors.text);
     let size = galley.size() + vec2(14.0, 6.0);
     let offset = vec2(0.0, 14.0 + size.y / 2.0);
     let above = p.y - 14.0 - size.y > g.plot.top() - 10.0;
     let r = Rect::from_center_size(if above { p - offset } else { p + offset }, size);
     let r = r.translate(vec2((g.rect.left() - r.left()).max(0.0) + (g.rect.right() - r.right()).min(0.0), 0.0));
-    painter.rect(r, CornerRadius::same(5), theme::RAISED, Stroke::new(1.0, HAIRLINE), StrokeKind::Inside);
-    painter.galley(r.center() - galley.size() / 2.0, galley, TEXT);
+    painter.rect(r, CornerRadius::same(5), colors.raised, Stroke::new(1.0, colors.line), StrokeKind::Inside);
+    painter.galley(r.center() - galley.size() / 2.0, galley, colors.text);
 }

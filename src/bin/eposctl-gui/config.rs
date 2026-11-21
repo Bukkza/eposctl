@@ -8,6 +8,7 @@ use eposctl::presets::Preset;
 use serde::{Deserialize, Serialize};
 
 use crate::strings::Lang;
+use crate::theme::Appearance;
 
 /// A sound setup: everything a preset can carry.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -296,10 +297,21 @@ pub struct PeqConfig {
     pub output: PeqOutput,
 }
 
+/// What eposctl does when the H3PRO smart button is pressed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SmartButton {
+    #[default]
+    Off,
+    NextPreset,
+    ToggleSurround,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub lang: Lang,
+    pub appearance: Appearance,
     pub close_to_tray: bool,
     pub restore_on_start: bool,
     pub battery_alerts: bool,
@@ -308,6 +320,7 @@ pub struct Config {
     pub custom_presets: Vec<CustomPreset>,
     pub auto: AutoPresets,
     pub hotkeys: Hotkeys,
+    pub smart_button: SmartButton,
     pub device_switch: DeviceSwitch,
     pub chat_mix: ChatMix,
     pub peq: PeqConfig,
@@ -318,6 +331,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             lang: Lang::Zh,
+            appearance: Appearance::default(),
             close_to_tray: true,
             restore_on_start: true,
             battery_alerts: true,
@@ -325,6 +339,7 @@ impl Default for Config {
             custom_presets: Vec::new(),
             auto: AutoPresets::default(),
             hotkeys: Hotkeys::default(),
+            smart_button: SmartButton::default(),
             device_switch: DeviceSwitch::default(),
             chat_mix: ChatMix::default(),
             peq: PeqConfig::default(),

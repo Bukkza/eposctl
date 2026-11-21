@@ -4,7 +4,7 @@ use eframe::egui::{RichText, Ui};
 
 use super::super::App;
 use crate::official::Outcome;
-use crate::theme::{self, SECONDARY};
+use crate::theme;
 use crate::widgets::{self, Notice};
 
 impl App {
@@ -54,7 +54,7 @@ impl App {
                 .replace("{svc_boot}", &state(st.service_autostart, s.suite_boot_on, s.suite_boot_off))
                 .replace("{app}", &state(st.app_running, s.suite_running, s.suite_not_running))
                 .replace("{app_boot}", &state(st.app_autostart, s.suite_boot_on, s.suite_boot_off));
-            ui.label(RichText::new(line).font(theme::font(12.5)).color(SECONDARY));
+            ui.label(RichText::new(line).font(theme::font(12.5)).color(theme::colors(ui).secondary));
             if busy {
                 widgets::desc(ui, s.suite_waiting);
             }

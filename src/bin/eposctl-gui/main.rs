@@ -31,6 +31,8 @@ mod hotkeys;
 mod icons;
 mod instance;
 mod meters;
+mod mic_calibration;
+mod mic_tools;
 mod notify;
 mod official;
 mod peq;

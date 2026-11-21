@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use eposctl::capricorn::Message;
 use eposctl::gsp370::{self, Gsp370};
-use eposctl::headset::Headset;
+use eposctl::headset::{H3PRO_DONGLE_PID, Headset};
 
 #[derive(Clone, Debug, Default)]
 pub struct DevState {
@@ -22,11 +22,12 @@ pub struct DevState {
     pub serial: Option<String>,
     pub firmware: Option<String>,
     pub battery: Option<u8>,
-    /// Raw device value: 0xFF = quietest, 0x00 = loudest.
+    /// Sidetone on the UI's 0–255 scale, quietest to loudest.
     pub sidetone: Option<u16>,
     /// Microphone noise reduction in the headset, 0..=2; `None` if unsupported.
     pub noise_reduction: Option<u16>,
     pub anc: Option<bool>,
+    pub smart_button_presses: u8,
 }
 
 pub enum Cmd {
@@ -171,7 +172,10 @@ fn session(h: &Headset, ctx: &Ctx<impl Fn()>, rx: &Receiver<Cmd>) -> io::Result<
             poll_battery(h, ctx)?;
         }
         let Some(frame) = h.poll_frame(150)? else { continue };
-        if on_message(ctx, frame.decode()) {
+        let message = frame.decode();
+        if message == Message::SmartButtonPressed && h.pid() == H3PRO_DONGLE_PID {
+            ctx.update(|s| s.smart_button_presses = s.smart_button_presses.saturating_add(1));
+        } else if on_message(ctx, message) {
             requery_at = Some(Instant::now() + Duration::from_millis(1500));
         }
     }
@@ -185,11 +189,10 @@ fn gsp_session(g: &Gsp370, ctx: &Ctx<impl Fn()>, rx: &Receiver<Cmd>) -> io::Resu
     let mut next_poll = Instant::now();
     loop {
         let Some(p) = drain(rx) else { return Ok(()) };
-        if let Some(raw) = p.sidetone {
-            // The UI's raw scale is the H3PRO's: 0xFF quietest, 0 loudest.
-            let level = gsp370::sidetone_level(f32::from(255 - raw.min(255)) / 255.0);
+        if let Some(ui_level) = p.sidetone {
+            let level = gsp370::sidetone_level(f32::from(ui_level) / 255.0);
             if g.set_sidetone(level).is_ok() {
-                ctx.update(|s| s.sidetone = Some(raw));
+                ctx.update(|s| s.sidetone = Some(ui_level));
             }
         }
         if p.refresh || Instant::now() >= next_poll {
@@ -202,7 +205,7 @@ fn gsp_session(g: &Gsp370, ctx: &Ctx<impl Fn()>, rx: &Receiver<Cmd>) -> io::Resu
                 s.product = Some("EPOS GSP 370".into());
                 s.battery = battery;
                 if linked && s.sidetone.is_none() {
-                    s.sidetone = Some(0xFF); // unknown; shown as off until set
+                    s.sidetone = Some(0); // unknown; shown as off until set
                 }
             });
         }

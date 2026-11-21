@@ -4,7 +4,6 @@
 use std::time::{Duration, Instant};
 
 use eposctl::apo::{ApoChannel, DeviceId, Settings, layout::BANDS};
-use eposctl::audio::KeepRecording;
 
 use crate::config::{Last, Snapshot, Sound};
 use crate::history::History;
@@ -16,8 +15,6 @@ const RESYNC: Duration = Duration::from_millis(1000);
 struct Metering {
     /// `mic_meters_enabled` before we switched it on.
     original: bool,
-    /// The APO only meters the mic while some program records from it.
-    _recorder: Option<KeepRecording>,
 }
 
 pub struct Editor {
@@ -223,12 +220,11 @@ impl Editor {
             (true, None) => {
                 let Ok(cur) = ch.read() else { return };
                 if ch.modify(|s| s.set_mic_meters(true)).is_ok() {
-                    self.metering = Some(Metering { original: cur.mic_meters(), _recorder: KeepRecording::epos() });
+                    self.metering = Some(Metering { original: cur.mic_meters() });
                 }
             }
             (false, Some(m)) => {
                 let original = m.original;
-                // Stop recording before putting the flag back.
                 self.metering = None;
                 let _ = ch.modify(|s| s.set_mic_meters(original));
             }

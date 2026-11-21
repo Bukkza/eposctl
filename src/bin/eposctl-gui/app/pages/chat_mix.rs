@@ -4,7 +4,7 @@ use eframe::egui::{RichText, Ui, vec2};
 
 use super::super::App;
 use super::exe_input;
-use crate::theme::SECONDARY;
+use crate::theme;
 use crate::widgets;
 
 /// Near the middle the slider snaps to the centre so "both full" is easy to hit.
@@ -41,11 +41,11 @@ impl App {
         widgets::row_title(ui, "", Some(value), true);
         let changed = ui
             .horizontal(|ui| {
-                ui.label(RichText::new(s.mix_game).color(SECONDARY));
+                ui.label(RichText::new(s.mix_game).color(theme::colors(ui).secondary));
                 let label_w = 48.0;
                 let size = vec2((ui.available_width() - label_w).max(80.0), 26.0);
                 let changed = ui.allocate_ui(size, |ui| balance_slider(ui, b)).inner;
-                ui.label(RichText::new(s.mix_voice).color(SECONDARY));
+                ui.label(RichText::new(s.mix_voice).color(theme::colors(ui).secondary));
                 changed
             })
             .inner;

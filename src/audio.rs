@@ -19,6 +19,8 @@ use windows::Win32::System::Com::{
 };
 use windows::core::{GUID, HRESULT, HSTRING, IUnknown, Interface, PCWSTR, PWSTR};
 
+pub mod microphone;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Flow {
     /// Playback (speakers, headphones).
@@ -45,8 +47,11 @@ pub struct Endpoint {
 }
 
 fn com() {
-    // Fine if this thread already joined an apartment (eframe's UI thread is STA).
-    let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+    thread_local! {
+        // If the thread already joined an STA, COM is available there too.
+        static INITIALIZED: () = { let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }; };
+    }
+    INITIALIZED.with(|()| ());
 }
 
 fn enumerator() -> windows::core::Result<IMMDeviceEnumerator> {
@@ -227,31 +232,19 @@ pub fn exe_of_pid(pid: u32) -> Option<String> {
 
 /// Record from the capture endpoint `id` in shared mode (so the device's APOs
 /// process the signal), calling `on_frames(first_channel_samples, sample_rate)`
-/// for each packet until `keep_going()` returns false. The mix format must be
-/// 32-bit float, which is what Windows uses for shared-mode streams.
+/// for each packet until `keep_going()` returns false. If the native mix format
+/// is not float, WASAPI converts it to mono float at the same sample rate.
 pub fn capture(
     id: &str,
     mut keep_going: impl FnMut() -> bool,
     mut on_frames: impl FnMut(&[f32], u32),
 ) -> windows::core::Result<()> {
-    use windows::Win32::Media::Audio::{
-        AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, IAudioCaptureClient, IAudioClient,
-    };
+    use windows::Win32::Media::Audio::{AUDCLNT_BUFFERFLAGS_SILENT, IAudioCaptureClient, IAudioClient};
     let en = enumerator()?;
     unsafe {
         let dev = en.GetDevice(&HSTRING::from(id))?;
         let client: IAudioClient = dev.Activate(CLSCTX_ALL, None)?;
-        let fmt = client.GetMixFormat()?;
-        let (channels, rate, bits) = ((*fmt).nChannels as usize, (*fmt).nSamplesPerSec, (*fmt).wBitsPerSample);
-        let init = client.Initialize(AUDCLNT_SHAREMODE_SHARED, 0, 10_000_000, 0, fmt, None);
-        CoTaskMemFree(Some(fmt as *const c_void));
-        init?;
-        if bits != 32 || channels == 0 {
-            return Err(windows::core::Error::new(
-                windows::Win32::Foundation::E_NOTIMPL,
-                "mix format is not 32-bit float",
-            ));
-        }
+        let (channels, rate) = microphone::initialize_capture(&client)?;
         let cap: IAudioCaptureClient = client.GetService()?;
         client.Start()?;
         let mut mono = Vec::new();
@@ -260,10 +253,15 @@ pub fn capture(
             while cap.GetNextPacketSize()? > 0 {
                 let (mut data, mut frames, mut flags) = (std::ptr::null_mut(), 0u32, 0u32);
                 cap.GetBuffer(&mut data, &mut frames, &mut flags, None, None)?;
-                let samples = std::slice::from_raw_parts(data as *const f32, frames as usize * channels);
                 let silent = flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0;
                 mono.clear();
-                mono.extend(samples.chunks(channels).map(|f| if silent { 0.0 } else { f[0] }));
+                if silent {
+                    mono.resize(frames as usize, 0.0);
+                } else if frames != 0 {
+                    // SAFETY: a non-silent WASAPI packet has `frames` interleaved float frames.
+                    let samples = std::slice::from_raw_parts(data.cast::<f32>(), frames as usize * channels);
+                    mono.extend(samples.chunks_exact(channels).map(|f| f[0]));
+                }
                 cap.ReleaseBuffer(frames)?;
                 on_frames(&mono, rate);
             }
