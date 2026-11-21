@@ -61,6 +61,69 @@ jobs:
           & $iscc.FullName "/DAppVersion=${{ steps.ver.outputs.version }}" installer\eposctl.iss
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
+      - name: Verify installer upgrade
+        if: steps.ver.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $previous = Join-Path $env:RUNNER_TEMP 'eposctl-v0.3.2-setup.exe'
+          gh release download v0.3.2 --pattern eposctl-setup.exe --output $previous
+          if ($LASTEXITCODE) { throw 'Could not download the 0.3.2 installer.' }
+          $previousHash = '57dba5571818a7978a70b34c1bf40b68f98384431985668c40284673d469440a'
+          if ((Get-FileHash -LiteralPath $previous).Hash -ne $previousHash) {
+            throw 'The 0.3.2 installer checksum does not match.'
+          }
+          $setup = (Resolve-Path dist\eposctl-setup.exe).Path
+          $install = Join-Path $env:RUNNER_TEMP 'eposctl-upgrade-check'
+          $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          $runCommand = '"' + (Join-Path $install 'eposctl-gui.exe') + '" --minimized'
+
+          function Install-Eposctl($exe, $scenario, $arguments) {
+            $log = Join-Path $env:RUNNER_TEMP "eposctl-$scenario.log"
+            $flags = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=`"$log`" $arguments"
+            $proc = Start-Process -FilePath $exe -ArgumentList $flags -WindowStyle Hidden -Wait -PassThru
+            if ($proc.ExitCode -ne 0) {
+              Get-Content -LiteralPath $log -Tail 50
+              throw "Installer failed for $scenario (exit $($proc.ExitCode))."
+            }
+          }
+
+          Install-Eposctl $previous 'baseline' "/DIR=`"$install`" /TASKS=autostart"
+          if ((Get-ItemPropertyValue -LiteralPath $runKey -Name eposctl) -cne $runCommand) {
+            throw 'The baseline installer did not enable startup.'
+          }
+          $configDir = New-Item -ItemType Directory -Path (Join-Path $env:APPDATA 'eposctl') -Force
+          $config = Join-Path $configDir.FullName 'config.json'
+          '{"lang":"En","close_to_tray":false,"custom_presets":[{"name":"Upgrade test","sound":{"speaker_eq":[0,0,0,0,0,0,0,0,0],"reverb":0,"surround":false}}]}' |
+            Set-Content -LiteralPath $config -Encoding utf8NoBOM
+          $configHash = (Get-FileHash -LiteralPath $config).Hash
+
+          # Simulate turning off the installer's original startup choice in the app.
+          Remove-ItemProperty -LiteralPath $runKey -Name eposctl
+          Install-Eposctl $setup 'upgrade-startup-off' '/TASKS=autostart'
+          if ($null -ne (Get-ItemPropertyValue -LiteralPath $runKey -Name eposctl -ErrorAction SilentlyContinue)) {
+            throw 'Upgrade re-enabled startup.'
+          }
+          $version = & (Join-Path $install 'eposctl.exe') --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne 'eposctl ${{ steps.ver.outputs.version }}') {
+            throw "Upgrade did not install the expected version ($version)."
+          }
+          if ((Get-FileHash -LiteralPath $config).Hash -ne $configHash) {
+            throw 'Upgrade modified the existing user config.'
+          }
+
+          # A portable copy may have enabled startup since the first install.
+          Install-Eposctl $previous 'baseline-startup-on' '/TASKS=autostart'
+          $null = New-ItemProperty -LiteralPath $runKey -Name eposctl -PropertyType String -Value '"C:\eposctl-portable\eposctl-gui.exe" --minimized' -Force
+          Install-Eposctl $setup 'upgrade-startup-on' '/TASKS=""'
+          if ((Get-ItemPropertyValue -LiteralPath $runKey -Name eposctl) -cne $runCommand) {
+            throw 'Upgrade did not keep startup enabled for the installed copy.'
+          }
+          if ((Get-FileHash -LiteralPath $config).Hash -ne $configHash) {
+            throw 'Upgrade modified the existing user config.'
+          }
+
       - name: Package
         if: steps.ver.outputs.skip != 'true'
         shell: pwsh

@@ -83,7 +83,7 @@ chinesesimplified.RunFailed=%1 没有运行（代码 %2）。
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "autostart"; Description: "{cm:AutoStart}"
+Name: "autostart"; Description: "{cm:AutoStart}"; Check: IsFirstInstall
 Name: "eposdriver"; Description: "{cm:EposTask}"; GroupDescription: "{cm:DriverGroup}"; Check: NeedsDriver
 Name: "eqapo"; Description: "{cm:EqApoTask}"; GroupDescription: "{cm:DriverGroup}"; Check: OfferEqApo; Flags: unchecked
 
@@ -99,8 +99,8 @@ Name: "{autoprograms}\eposctl"; Filename: "{app}\eposctl-gui.exe"
 Name: "{autodesktop}\eposctl"; Filename: "{app}\eposctl-gui.exe"; Tasks: desktopicon
 
 [Registry]
-; The same value the app's own "Start with Windows" switch writes.
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "eposctl"; ValueData: """{app}\eposctl-gui.exe"" --minimized"; Tasks: autostart
+; Keep Windows' approval state and use the same Run value as the app's setting.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "eposctl"; ValueData: """{app}\eposctl-gui.exe"" --minimized"; Check: WriteAutoStart
 
 [Run]
 Filename: "{app}\eposctl-gui.exe"; Description: "{cm:LaunchProgram,eposctl}"; Flags: nowait postinstall skipifsilent
@@ -109,6 +109,20 @@ Filename: "{app}\eposctl-gui.exe"; Description: "{cm:LaunchProgram,eposctl}"; Fl
 var
   DownloadPage: TDownloadWizardPage;
   EposDownloaded, EqApoDownloaded: Boolean;
+
+function IsFirstInstall: Boolean;
+begin
+  Result := WizardForm.PrevAppDir = '';
+end;
+
+function WriteAutoStart: Boolean;
+begin
+  if IsFirstInstall then
+    Result := WizardIsTaskSelected('autostart')
+  else
+    { The app can change the startup setting after an earlier install. }
+    Result := RegValueExists(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'eposctl');
+end;
 
 function NeedsDriver: Boolean;
 begin

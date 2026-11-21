@@ -4,6 +4,12 @@ Or the portable app: **[eposctl-gui.exe](https://github.com/hiyufan/eposctl/rele
 **[⬇ 下载安装程序（eposctl-setup.exe）](https://github.com/hiyufan/eposctl/releases/latest/download/eposctl-setup.exe)**：开始菜单快捷方式、可选开机启动、可卸载，不需要管理员权限。
 也可以用免安装版：**[eposctl-gui.exe](https://github.com/hiyufan/eposctl/releases/latest/download/eposctl-gui.exe)**，单个文件，双击运行。
 
+**Upgrading / 覆盖安装**
+
+Run the installer over your existing installation. It keeps your presets, settings, and Start with Windows preference.
+
+直接运行安装包覆盖安装即可。原有预设、设置和开机启动状态会保留。
+
 Unofficial, open-source replacement for the discontinued EPOS Gaming Suite on Windows. Tested with the **EPOS H3PRO Hybrid** (USB dongle `1395:0303`).
 开源的 EPOS Gaming Suite 替代品，已在 **EPOS H3PRO Hybrid** 上测试。
 
