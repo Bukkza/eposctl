@@ -1,7 +1,7 @@
 """Generates assets/eposctl.ico and assets/logo.png.
 
-Same drawing as `icons::bitmap` in the GUI (full teal ring with a headset in
-the middle), so the exe icon matches the tray icon. Standard library only:
+The two waveform silhouettes are drawn on a 32×32 grid. The app also uses
+logo.png for the sidebar, window and tray. Standard library only:
 
     python assets/make_icon.py
 """
@@ -11,33 +11,58 @@ import os
 import struct
 import zlib
 
-ACCENT = (0x44, 0xEA, 0xD6)
+WAVEFORMS = (
+    (
+        (0x83, 0xA8, 0xFF),
+        (
+            (2.5, 18.75), (6.5, 14.75), (8.5, 14.75), (18.25, 5),
+            (21.5, 11.25), (23.25, 9.5), (29.75, 9.5), (25.5, 13.75),
+            (18.5, 13.75), (16.75, 10.75), (9.25, 18.75),
+        ),
+    ),
+    (
+        (0x3D, 0x64, 0xED),
+        (
+            (2.25, 23.5), (6, 19.75), (11.5, 19.75), (13, 22.25),
+            (18.5, 15.25), (28.5, 15.25), (25, 18.75), (20.5, 18.75),
+            (12, 27), (9.5, 23), (9, 23.5),
+        ),
+    ),
+)
 
 
-def glyph(x, y):
-    r = math.hypot(x, y - 0.05)
-    band = 0.50 <= r <= 0.66 and y < 0.05
-    cup = 0.38 <= abs(x) <= 0.66 and 0.0 <= y <= 0.48
-    return band or cup
+def spans(points, y):
+    crossings = []
+    for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1]):
+        if (y0 > y) != (y1 > y):
+            crossings.append(x0 + (y - y0) * (x1 - x0) / (y1 - y0))
+    crossings.sort()
+    return zip(crossings[::2], crossings[1::2])
 
 
 def rgba(size, ss=4):
-    n = float(size)
-    c, outer, inner = n / 2, n * 0.48, n * 0.36
+    scale = size * ss / 32
     out = bytearray()
     for y in range(size):
+        rows = []
+        for sy in range(ss):
+            row = [None] * (size * ss)
+            sample_y = (y * ss + sy + 0.5) / scale
+            for color, points in WAVEFORMS:
+                for left, right in spans(points, sample_y):
+                    start = math.ceil(left * scale - 0.5)
+                    end = math.ceil(right * scale - 0.5)
+                    row[start:end] = [color] * (end - start)
+            rows.append(row)
+
         out.append(0)  # PNG filter byte
         for x in range(size):
-            hits = 0
-            for sy in range(ss):
-                for sx in range(ss):
-                    fx = x + (sx + 0.5) / ss - c
-                    fy = y + (sy + 0.5) / ss - c
-                    d = math.hypot(fx, fy)
-                    if inner <= d <= outer or glyph(fx / inner, fy / inner):
-                        hits += 1
-            a = round(hits / (ss * ss) * 255)
-            out += bytes(ACCENT + (a,)) if a else b"\0\0\0\0"
+            samples = [color for row in rows for color in row[x * ss:(x + 1) * ss] if color is not None]
+            if samples:
+                rgb = [round(sum(channel) / len(samples)) for channel in zip(*samples)]
+                out += bytes(rgb + [round(len(samples) / (ss * ss) * 255)])
+            else:
+                out += b"\0\0\0\0"
     return bytes(out)
 
 

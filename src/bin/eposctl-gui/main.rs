@@ -51,13 +51,12 @@ fn main() -> eframe::Result {
         std::process::exit(code);
     }
     let Some(show_event) = instance::claim() else { return Ok(()) };
-    let icon = egui::IconData { rgba: icons::bitmap(64, None, true), width: 64, height: 64 };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("eposctl")
             .with_inner_size([1000.0, 780.0])
             .with_min_inner_size([820.0, 600.0])
-            .with_icon(icon),
+            .with_icon(icons::brand().clone()),
         ..Default::default()
     };
     eframe::run_native("eposctl", options, Box::new(move |cc| Ok(Box::new(app::App::new(cc, show_event)))))

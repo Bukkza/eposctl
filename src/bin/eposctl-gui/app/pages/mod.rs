@@ -115,8 +115,12 @@ impl App {
         ui.horizontal(|ui| {
             ui.add_space(4.0);
             let (mark, _) = ui.allocate_exact_size(vec2(32.0, 32.0), Sense::hover());
-            ui.painter().rect_filled(mark, CornerRadius::same(10), colors.accent);
-            icons::paint(ui.painter(), mark.shrink(7.0), Icon::Device, colors.on_accent);
+            ui.painter().image(
+                self.brand.id(),
+                mark,
+                Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                egui::Color32::WHITE,
+            );
             ui.label(RichText::new("eposctl").font(theme::font_strong(21.0)).color(colors.text));
         });
         ui.add_space(theme::SECTION_GAP);

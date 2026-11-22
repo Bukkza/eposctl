@@ -44,7 +44,7 @@ pub struct Tray {
 }
 
 fn icon(battery: Option<u8>, connected: bool) -> Option<Icon> {
-    Icon::from_rgba(icons::bitmap(32, battery, connected), 32, 32).ok()
+    Icon::from_rgba(icons::tray_bitmap(32, battery, connected), 32, 32).ok()
 }
 
 /// Menu entries: (id, label). Preset ids are prefixed with `preset:`.

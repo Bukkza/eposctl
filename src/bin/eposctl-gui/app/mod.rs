@@ -49,6 +49,7 @@ pub struct App {
     tx: Sender<Cmd>,
     flags: Arc<tray::Flags>,
     tray: Option<Tray>,
+    brand: egui::TextureHandle,
     window: Window,
     view: View,
     hotkeys: Option<hotkeys::Hotkeys>,
@@ -108,6 +109,8 @@ impl App {
         let (dev, tx) = worker::spawn(move || wake.request_repaint());
         let flags = Arc::new(tray::Flags::default());
         show_event.watch(flags.clone(), ctx.clone());
+        let mark = crate::icons::brand();
+        let image = egui::ColorImage::from_rgba_unmultiplied([mark.width as usize, mark.height as usize], &mark.rgba);
         let mut app = Self {
             cfg,
             autosave: Autosave::default(),
@@ -116,6 +119,7 @@ impl App {
             tx,
             flags: flags.clone(),
             tray: None,
+            brand: ctx.load_texture("eposctl logo", image, egui::TextureOptions::LINEAR),
             window: Window::new(std::env::args().any(|a| a == "--minimized")),
             view: View { eqapo_installed: eposctl::eqapo::config_dir().is_some(), ..View::default() },
             hotkeys: hotkeys::Hotkeys::spawn(ctx.clone()),
