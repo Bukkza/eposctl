@@ -49,7 +49,7 @@ directly, so you keep every setting without the old app or its background servic
 | | |
 |---|---|
 | **Sound** | 9-band EQ you drag with the mouse, factory presets (music, esport, movie, flat), virtual 7.1 surround, reverb, undo/redo, compare to before |
-| **Game presets** | Footstep presets for **VALORANT**, **Delta Force**, **Call of Duty** and **PUBG**, tuned for the H3 series ([how they were made](docs/game-presets.md)) |
+| **Game presets** | Footstep-oriented tuning for the H3PRO Hybrid in **VALORANT**, **Delta Force**, **Call of Duty** and **PUBG** ([curves and evidence](docs/game-presets.md)) |
 | **Microphone** | Noise gate, the headset's own noise reduction (off / medium / strong), sidetone, 9-band mic EQ, live level meter |
 | **Your presets** | Save, overwrite, import and export as JSON; load an [AutoEQ](https://github.com/jaakkopasanen/AutoEq) or Equalizer APO file |
 | **Automation** | Switch preset when a game comes to the front, global hotkeys, move the Windows default sound devices when the headset turns off and back on |

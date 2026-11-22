@@ -1,7 +1,7 @@
-//! Factory sound presets.
+//! EPOS factory presets and eposctl game presets.
 //!
 //! The official XML files only hold 5 EQ sliders while the APO has 9 bands; the
-//! official UI expands them internally. The 9-band curves below are the exact
+//! official UI expands them internally. The factory curves below are the exact
 //! values the official UI wrote into the APO settings block (captured by diffing
 //! the shared memory), not an interpolation of our own.
 
@@ -56,45 +56,38 @@ pub const FACTORY: &[Preset] = &[
     },
 ];
 
-/// Footstep presets for particular games, tuned for the EPOS H3 series.
-///
-/// Nobody publishes measured footstep spectra for these games, so they are built
-/// from the advice that recurs across community sources (cut the explosion and
-/// vehicle low end, lift the 2-4 kHz scuff and click of footsteps), with
-/// per-game differences where sources agree on them. On top of that, the
-/// 1-4 kHz range gets about 1 dB more than the generic advice, because
-/// SoundGuys measured it slightly recessed on the EPOS H3 Hybrid. Surround and
-/// reverb are off: all four games do their own positional audio. Starting points,
-/// to be adjusted by ear. Sources are listed in `docs/game-presets.md`.
+/// Footstep-oriented starting points for the H3PRO Hybrid. The headset already
+/// has some mid-bass and 4 kHz emphasis, so the curves keep those boosts modest.
+/// See `docs/game-presets.md` for the measurements and listening comparisons.
 pub const GAMES: &[Preset] = &[
-    // Footsteps keep a low thud in VALORANT, so 125 Hz is lifted, not cut.
+    // Keep the footstep body at 250 Hz and favour 2 kHz over 4 kHz.
     Preset {
         name: "valorant",
-        speaker_eq: [-1.5, 1.0, 0.0, -1.5, 0.0, 2.0, 3.0, 0.5, 0.0],
+        speaker_eq: [-1.5, 0.0, 0.5, -1.5, 0.0, 2.0, 1.5, 0.0, 0.0],
         reverb: 0.0,
         noise_gate: None,
         surround: false,
     },
-    // Heavy vehicles and explosions: lows cut; reports of harsh gunfire: 8 kHz trimmed.
+    // Trim deep lows, retain some footstep body, and tame the upper bands.
     Preset {
         name: "delta-force",
-        speaker_eq: [-2.0, 0.0, 0.5, -1.0, 1.0, 3.0, 2.5, -0.5, 0.0],
+        speaker_eq: [-2.0, 0.5, 1.0, -1.0, 1.0, 2.5, 1.0, -0.5, 0.0],
         reverb: 0.0,
         noise_gate: None,
         surround: false,
     },
-    // Strong low cut for explosions, main lift near 2.85 kHz.
+    // Cut deep lows for explosions and keep 125–250 Hz close to flat.
     Preset {
         name: "cod",
-        speaker_eq: [-3.5, -1.5, -1.5, -0.5, 0.5, 3.0, 3.5, 1.0, 0.0],
+        speaker_eq: [-3.0, -0.5, 0.0, -0.5, 0.5, 2.5, 1.5, 0.5, 0.0],
         reverb: 0.0,
         noise_gate: None,
         surround: false,
     },
-    // Lift around 2 kHz, plus 4-8 kHz for footsteps on grass.
+    // Focus the lift at 1–2 kHz, with a small lift at 8 kHz.
     Preset {
         name: "pubg",
-        speaker_eq: [-3.0, -1.5, 0.0, 0.0, 1.0, 3.5, 2.5, 2.0, 0.0],
+        speaker_eq: [-3.0, -1.5, 0.0, 0.0, 1.5, 2.5, 0.5, 1.0, 0.0],
         reverb: 0.0,
         noise_gate: None,
         surround: false,
