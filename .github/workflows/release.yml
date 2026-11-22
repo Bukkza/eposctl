@@ -102,7 +102,7 @@ jobs:
           # Simulate turning off the installer's original startup choice in the app.
           Remove-ItemProperty -LiteralPath $runKey -Name eposctl
           Install-Eposctl $setup 'upgrade-startup-off' '/TASKS=autostart'
-          if ($null -ne (Get-ItemPropertyValue -LiteralPath $runKey -Name eposctl -ErrorAction SilentlyContinue)) {
+          if ((Get-Item -LiteralPath $runKey).GetValueNames() -contains 'eposctl') {
             throw 'Upgrade re-enabled startup.'
           }
           $version = & (Join-Path $install 'eposctl.exe') --version
