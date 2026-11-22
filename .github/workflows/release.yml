@@ -67,12 +67,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $previous = Join-Path $env:RUNNER_TEMP 'eposctl-v0.3.2-setup.exe'
-          gh release download v0.3.2 --pattern eposctl-setup.exe --output $previous
-          if ($LASTEXITCODE) { throw 'Could not download the 0.3.2 installer.' }
-          $previousHash = '57dba5571818a7978a70b34c1bf40b68f98384431985668c40284673d469440a'
+          $previous = Join-Path $env:RUNNER_TEMP 'eposctl-v0.3.3-setup.exe'
+          gh release download v0.3.3 --pattern eposctl-setup.exe --output $previous
+          if ($LASTEXITCODE) { throw 'Could not download the 0.3.3 installer.' }
+          $previousHash = '15e6b48e0f1c4628ea14140ebef25afa2acc6fbe49b038344c4b522a9d5bf616'
           if ((Get-FileHash -LiteralPath $previous).Hash -ne $previousHash) {
-            throw 'The 0.3.2 installer checksum does not match.'
+            throw 'The 0.3.3 installer checksum does not match.'
           }
           $setup = (Resolve-Path dist\eposctl-setup.exe).Path
           $install = Join-Path $env:RUNNER_TEMP 'eposctl-upgrade-check'
@@ -119,6 +119,25 @@ jobs:
           Install-Eposctl $setup 'upgrade-startup-on' '/TASKS=""'
           if ((Get-ItemPropertyValue -LiteralPath $runKey -Name eposctl) -cne $runCommand) {
             throw 'Upgrade did not keep startup enabled for the installed copy.'
+          }
+          if ((Get-FileHash -LiteralPath $config).Hash -ne $configHash) {
+            throw 'Upgrade modified the existing user config.'
+          }
+
+          # Windows can disable an existing Run entry independently of the app.
+          $approvalKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
+          if (-not (Test-Path -LiteralPath $approvalKey)) {
+            $null = New-Item -Path $approvalKey -Force
+          }
+          $disabled = [Convert]::FromHexString('030000000000000000000000')
+          $null = New-ItemProperty -LiteralPath $approvalKey -Name eposctl -Value $disabled -PropertyType Binary -Force
+          Install-Eposctl $setup 'upgrade-startup-disabled-by-windows' '/TASKS=autostart'
+          $approval = Get-ItemPropertyValue -LiteralPath $approvalKey -Name eposctl
+          if ([Convert]::ToHexString($approval) -cne [Convert]::ToHexString($disabled)) {
+            throw 'Upgrade changed the Windows startup approval state.'
+          }
+          if ((Get-ItemPropertyValue -LiteralPath $runKey -Name eposctl) -cne $runCommand) {
+            throw 'Upgrade changed the startup command.'
           }
           if ((Get-FileHash -LiteralPath $config).Hash -ne $configHash) {
             throw 'Upgrade modified the existing user config.'
