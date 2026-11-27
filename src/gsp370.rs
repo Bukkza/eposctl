@@ -155,13 +155,22 @@ impl Gsp370 {
             if SetCommTimeouts(self.h, &t) == 0 {
                 return Err(io::Error::last_os_error());
             }
-            PurgeComm(self.h, PURGE_RXCLEAR | PURGE_TXCLEAR);
+            if PurgeComm(self.h, PURGE_RXCLEAR | PURGE_TXCLEAR) == 0 {
+                return Err(io::Error::last_os_error());
+            }
         }
         Ok(())
     }
 
     /// Send `op` and wait up to a second for its reply; returns the values.
     pub fn request(&self, op: u8, params: &[u8]) -> io::Result<Vec<u8>> {
+        // Discard bytes left by a timed-out previous transaction. Without
+        // this, a delayed reply for the same opcode could be mistaken for the
+        // reply to the new request (especially battery polling, which repeats).
+        // SAFETY: self.h is an open serial handle and no I/O is pending here.
+        if unsafe { PurgeComm(self.h, PURGE_RXCLEAR) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
         let pkt = command(op, params);
         // A successful WriteFile is not guaranteed to consume the whole
         // buffer. Keep writing until the complete command has reached the
