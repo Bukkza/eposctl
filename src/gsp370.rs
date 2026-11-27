@@ -136,7 +136,11 @@ impl Gsp370 {
             dcb.ByteSize = 8;
             dcb.Parity = NOPARITY;
             dcb.StopBits = ONESTOPBIT;
-            dcb._bitfield = 1; // fBinary only: no flow control
+            // fBinary + DTR_CONTROL_ENABLE + RTS_CONTROL_ENABLE.
+            // The official GSP 370 software sends CDC SET_CONTROL_LINE_STATE
+            // with wValue=0x0003 on interface 4: DTR (bit 0) and RTS (bit 1)
+            // are both asserted. Keep hardware/software flow control disabled.
+            dcb._bitfield = 1 | (1 << 4) | (1 << 6);
             if SetCommState(self.h, &dcb) == 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -151,18 +155,49 @@ impl Gsp370 {
             if SetCommTimeouts(self.h, &t) == 0 {
                 return Err(io::Error::last_os_error());
             }
-            PurgeComm(self.h, PURGE_RXCLEAR | PURGE_TXCLEAR);
+            if PurgeComm(self.h, PURGE_RXCLEAR | PURGE_TXCLEAR) == 0 {
+                return Err(io::Error::last_os_error());
+            }
         }
         Ok(())
     }
 
     /// Send `op` and wait up to a second for its reply; returns the values.
     pub fn request(&self, op: u8, params: &[u8]) -> io::Result<Vec<u8>> {
-        let pkt = command(op, params);
-        let mut written = 0u32;
-        // SAFETY: `pkt` is readable for its length; `self.h` is open.
-        if unsafe { WriteFile(self.h, pkt.as_ptr(), pkt.len() as u32, &mut written, std::ptr::null_mut()) } == 0 {
+        // Discard bytes left by a timed-out previous transaction. Without
+        // this, a delayed reply for the same opcode could be mistaken for the
+        // reply to the new request (especially battery polling, which repeats).
+        // SAFETY: self.h is an open serial handle and no I/O is pending here.
+        if unsafe { PurgeComm(self.h, PURGE_RXCLEAR) } == 0 {
             return Err(io::Error::last_os_error());
+        }
+        let pkt = command(op, params);
+        // A successful WriteFile is not guaranteed to consume the whole
+        // buffer. Keep writing until the complete command has reached the
+        // serial driver; a zero-byte write would otherwise spin forever.
+        let mut offset = 0usize;
+        while offset < pkt.len() {
+            let mut written = 0u32;
+            // SAFETY: the remaining packet slice is readable; self.h is open.
+            if unsafe {
+                WriteFile(
+                    self.h,
+                    pkt[offset..].as_ptr(),
+                    (pkt.len() - offset) as u32,
+                    &mut written,
+                    std::ptr::null_mut(),
+                )
+            } == 0
+            {
+                return Err(io::Error::last_os_error());
+            }
+            if written == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "serial port accepted zero bytes",
+                ));
+            }
+            offset += written as usize;
         }
         let deadline = Instant::now() + Duration::from_secs(1);
         let mut received = Vec::new();
@@ -233,6 +268,38 @@ mod tests {
         assert_eq!(parse_reply(&rx, OP_SIDETONE_SET), None, "other opcode");
         assert_eq!(check(vec![0x00, 87], OP_BATTERY).unwrap(), vec![87]);
         assert_eq!(check(vec![0x0C], OP_BATTERY).unwrap_err().kind(), io::ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn captured_gsp370_battery_replies_report_99_and_100_percent() {
+        // Observed in USBPcap captures of the official EPOS software:
+        // 04 0E 05 01 9C FC 00 63 -> 99 %, and ... 64 -> 100 %.
+        let at_99 = [0x04, 0x0E, 0x05, 0x01, 0x9C, 0xFC, 0x00, 0x63];
+        let at_100 = [0x04, 0x0E, 0x05, 0x01, 0x9C, 0xFC, 0x00, 0x64];
+
+        assert_eq!(check(parse_reply(&at_99, OP_BATTERY).unwrap(), OP_BATTERY).unwrap(), [99]);
+        assert_eq!(check(parse_reply(&at_100, OP_BATTERY).unwrap(), OP_BATTERY).unwrap(), [100]);
+    }
+
+    #[test]
+    fn reply_parser_waits_for_the_complete_declared_frame() {
+        let reply = [0x04, 0x0E, 0x05, 0x01, 0x9C, 0xFC, 0x00, 73];
+
+        for end in 0..reply.len() {
+            assert_eq!(parse_reply(&reply[..end], OP_BATTERY), None, "length {end}");
+        }
+        assert_eq!(parse_reply(&reply, OP_BATTERY), Some(vec![0x00, 73]));
+    }
+
+    #[test]
+    fn reply_parser_rejects_invalid_lengths_and_other_opcodes() {
+        let too_short = [0x04, 0x0E, 0x03, 0x01, 0x9C, 0xFC, 0x00];
+        let wrong_opcode = [0x04, 0x0E, 0x05, 0x01, 0xA2, 0xFC, 0x00, 8];
+        let truncated = [0x04, 0x0E, 0x08, 0x01, 0x9C, 0xFC, 0x00, 73];
+
+        assert_eq!(parse_reply(&too_short, OP_BATTERY), None);
+        assert_eq!(parse_reply(&wrong_opcode, OP_BATTERY), None);
+        assert_eq!(parse_reply(&truncated, OP_BATTERY), None);
     }
 
     #[test]
