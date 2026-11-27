@@ -136,7 +136,11 @@ impl Gsp370 {
             dcb.ByteSize = 8;
             dcb.Parity = NOPARITY;
             dcb.StopBits = ONESTOPBIT;
-            dcb._bitfield = 1; // fBinary only: no flow control
+            // fBinary + DTR_CONTROL_ENABLE. CDC ACM dongles may not deliver
+            // data until the host asserts DTR; leaving DTR disabled can make
+            // the COM port open successfully but every command time out.
+            // Keep hardware/software flow control disabled.
+            dcb._bitfield = 1 | (1 << 4);
             if SetCommState(self.h, &dcb) == 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -159,10 +163,32 @@ impl Gsp370 {
     /// Send `op` and wait up to a second for its reply; returns the values.
     pub fn request(&self, op: u8, params: &[u8]) -> io::Result<Vec<u8>> {
         let pkt = command(op, params);
-        let mut written = 0u32;
-        // SAFETY: `pkt` is readable for its length; `self.h` is open.
-        if unsafe { WriteFile(self.h, pkt.as_ptr(), pkt.len() as u32, &mut written, std::ptr::null_mut()) } == 0 {
-            return Err(io::Error::last_os_error());
+        // A successful WriteFile is not guaranteed to consume the whole
+        // buffer. Keep writing until the complete command has reached the
+        // serial driver; a zero-byte write would otherwise spin forever.
+        let mut offset = 0usize;
+        while offset < pkt.len() {
+            let mut written = 0u32;
+            // SAFETY: the remaining packet slice is readable; self.h is open.
+            if unsafe {
+                WriteFile(
+                    self.h,
+                    pkt[offset..].as_ptr(),
+                    (pkt.len() - offset) as u32,
+                    &mut written,
+                    std::ptr::null_mut(),
+                )
+            } == 0
+            {
+                return Err(io::Error::last_os_error());
+            }
+            if written == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "serial port accepted zero bytes",
+                ));
+            }
+            offset += written as usize;
         }
         let deadline = Instant::now() + Duration::from_secs(1);
         let mut received = Vec::new();
