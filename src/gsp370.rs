@@ -271,6 +271,27 @@ mod tests {
     }
 
     #[test]
+    fn reply_parser_waits_for_the_complete_declared_frame() {
+        let reply = [0x04, 0x0E, 0x05, 0x01, 0x9C, 0xFC, 0x00, 73];
+
+        for end in 0..reply.len() {
+            assert_eq!(parse_reply(&reply[..end], OP_BATTERY), None, "length {end}");
+        }
+        assert_eq!(parse_reply(&reply, OP_BATTERY), Some(vec![0x00, 73]));
+    }
+
+    #[test]
+    fn reply_parser_rejects_invalid_lengths_and_other_opcodes() {
+        let too_short = [0x04, 0x0E, 0x03, 0x01, 0x9C, 0xFC, 0x00];
+        let wrong_opcode = [0x04, 0x0E, 0x05, 0x01, 0xA2, 0xFC, 0x00, 8];
+        let truncated = [0x04, 0x0E, 0x08, 0x01, 0x9C, 0xFC, 0x00, 73];
+
+        assert_eq!(parse_reply(&too_short, OP_BATTERY), None);
+        assert_eq!(parse_reply(&wrong_opcode, OP_BATTERY), None);
+        assert_eq!(parse_reply(&truncated, OP_BATTERY), None);
+    }
+
+    #[test]
     fn sidetone_levels_skip_the_gap_above_off() {
         assert_eq!(sidetone_level(0.0), 0);
         assert_eq!(sidetone_level(0.01), SIDETONE_MIN);
