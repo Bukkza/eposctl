@@ -136,11 +136,11 @@ impl Gsp370 {
             dcb.ByteSize = 8;
             dcb.Parity = NOPARITY;
             dcb.StopBits = ONESTOPBIT;
-            // fBinary + DTR_CONTROL_ENABLE. CDC ACM dongles may not deliver
-            // data until the host asserts DTR; leaving DTR disabled can make
-            // the COM port open successfully but every command time out.
-            // Keep hardware/software flow control disabled.
-            dcb._bitfield = 1 | (1 << 4);
+            // fBinary + DTR_CONTROL_ENABLE + RTS_CONTROL_ENABLE.
+            // The official GSP 370 software sends CDC SET_CONTROL_LINE_STATE
+            // with wValue=0x0003 on interface 4: DTR (bit 0) and RTS (bit 1)
+            // are both asserted. Keep hardware/software flow control disabled.
+            dcb._bitfield = 1 | (1 << 4) | (1 << 6);
             if SetCommState(self.h, &dcb) == 0 {
                 return Err(io::Error::last_os_error());
             }
