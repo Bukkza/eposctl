@@ -271,6 +271,17 @@ mod tests {
     }
 
     #[test]
+    fn captured_gsp370_battery_replies_report_99_and_100_percent() {
+        // Observed in USBPcap captures of the official EPOS software:
+        // 04 0E 05 01 9C FC 00 63 -> 99 %, and ... 64 -> 100 %.
+        let at_99 = [0x04, 0x0E, 0x05, 0x01, 0x9C, 0xFC, 0x00, 0x63];
+        let at_100 = [0x04, 0x0E, 0x05, 0x01, 0x9C, 0xFC, 0x00, 0x64];
+
+        assert_eq!(check(parse_reply(&at_99, OP_BATTERY).unwrap(), OP_BATTERY).unwrap(), [99]);
+        assert_eq!(check(parse_reply(&at_100, OP_BATTERY).unwrap(), OP_BATTERY).unwrap(), [100]);
+    }
+
+    #[test]
     fn reply_parser_waits_for_the_complete_declared_frame() {
         let reply = [0x04, 0x0E, 0x05, 0x01, 0x9C, 0xFC, 0x00, 73];
 
